@@ -24,13 +24,13 @@ import {
 // --- CONFIGURACIÓN DE FIREBASE ---
 // ¡¡IMPORTANTE!!: Reemplaza esto con TUS credenciales de Firebase Console
 const firebaseConfig = {
-  apiKey: "AIzaSyBRx7N3mNQEmGG7B7fW2sG5ntwWHk0TE3U",
-  authDomain: "habitos-pareja.firebaseapp.com",
-  projectId: "habitos-pareja",
-  storageBucket: "habitos-pareja.firebasestorage.app",
-  messagingSenderId: "456771119690",
-  appId: "1:456771119690:web:9c208c7f3e00391bb014b3",
-  measurementId: "G-ZHYZWPE4D4"
+  apiKey: import.meta.env.VITE_APIKEY,
+  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_APP_ID,
+  measurementId: import.meta.env.VITE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
