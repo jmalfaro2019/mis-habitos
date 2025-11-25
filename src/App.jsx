@@ -7,12 +7,11 @@ import {
   signOut, 
   onAuthStateChanged 
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
 // Importamos nuestros nuevos componentes modulares
 // ¡IMPORTANTE: Fíjate en las extensiones .jsx!
 import LoginRegister from './components/LoginRegister.jsx';
-import GroupSelector from './components/GroupSelector.jsx';
 import HabitManager from './components/HabitManager.jsx';
 
 // --- CONFIGURACIÓN DE FIREBASE (Tu código exacto) ---
@@ -32,28 +31,44 @@ const db = getFirestore(app);
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null); // Datos extendidos del usuario (following, etc.)
   const [view, setView] = useState('loading'); 
-  const [groupCode, setGroupCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   // 1. Manejo de Sesión
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u);
-        const savedGroup = localStorage.getItem('myGroupCode');
-        if (savedGroup) {
-          setGroupCode(savedGroup);
-          setView('dashboard');
-        } else {
-          setView('group_select');
-        }
+        // Suscribirse a cambios en el perfil del usuario
+        const unsubscribeProfile = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
+            if (docSnap.exists()) {
+                setUserProfile(docSnap.data());
+            } else {
+                // Si no existe (ej. usuario antiguo), crear uno básico
+                const newProfile = {
+                    uid: u.uid,
+                    email: u.email,
+                    following: []
+                };
+                setDoc(doc(db, 'users', u.uid), newProfile);
+                setUserProfile(newProfile);
+            }
+        }, (error) => {
+            console.error("Error listening to user profile:", error);
+        });
+
+        setView('dashboard');
+        
+        // Cleanup de la suscripción al perfil cuando cambia el usuario o se desmonta
+        return () => unsubscribeProfile();
       } else {
         setUser(null);
+        setUserProfile(null);
         setView('login');
       }
     });
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, []);
 
   // --- FUNCIONES DE ALTO NIVEL ---
@@ -71,7 +86,17 @@ export default function App() {
   const handleRegister = async (email, password) => {
     setErrorMsg('');
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const u = userCredential.user;
+      
+      // Crear documento de usuario en Firestore
+      const newProfile = {
+        uid: u.uid,
+        email: u.email,
+        following: []
+      };
+      await setDoc(doc(db, 'users', u.uid), newProfile);
+      
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/email-already-in-use') setErrorMsg('Este correo ya está registrado.');
@@ -82,30 +107,7 @@ export default function App() {
 
   const handleLogout = async () => {
     await signOut(auth);
-    setGroupCode('');
-    localStorage.removeItem('myGroupCode');
     setView('login');
-  };
-
-  const handleJoinGroup = (code) => {
-    const cleanCode = code.trim().toUpperCase();
-    if (!cleanCode) return;
-    setGroupCode(cleanCode);
-    localStorage.setItem('myGroupCode', cleanCode);
-    setView('dashboard');
-  };
-
-  const createGroup = () => {
-    const code = Math.random().toString(36).substring(2, 7).toUpperCase();
-    setGroupCode(code);
-    localStorage.setItem('myGroupCode', code);
-    setView('dashboard');
-  };
-
-  const handleLeaveGroup = () => {
-    setGroupCode('');
-    localStorage.removeItem('myGroupCode');
-    setView('group_select');
   };
 
   // --- RENDERIZADO ---
@@ -123,23 +125,11 @@ export default function App() {
     );
   }
 
-  if (view === 'group_select') {
-    return (
-      <GroupSelector 
-        user={user}
-        onCreateGroup={createGroup}
-        onJoinGroup={handleJoinGroup}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
   return (
     <HabitManager 
       db={db}
       user={user}
-      groupCode={groupCode}
-      onLeaveGroup={handleLeaveGroup}
+      userProfile={userProfile}
       onLogout={handleLogout}
     />
   );
