@@ -1,18 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  doc, 
-  updateDoc, 
-  deleteDoc,
-  serverTimestamp,
-  query,
-  where,
-  getDocs
-} from 'firebase/firestore';
-import { Target, Plus, LogOut, User, Users, Heart } from 'lucide-react';
-import { Button, Input } from './BaseUI.jsx';
+import React, { useState } from 'react';
+import { Target, Plus, LogOut, Users, Heart } from 'lucide-react';
+import { Button } from './BaseUI.jsx';
 import HabitCard from './HabitCard.jsx';
 import NotificationsPanel from './NotificationsPanel.jsx';
 import UserProfile from './UserProfile.jsx';
@@ -20,91 +8,39 @@ import SocialModal from './SocialModal.jsx';
 import ChallengeList from './ChallengeList.jsx';
 import ChallengeDetail from './ChallengeDetail.jsx';
 import CoupleSpace from './CoupleSpace.jsx';
+import CreateChallengeModal from './CreateChallengeModal.jsx';
+
+// Hooks
+import { useHabits } from '../hooks/useHabits';
+import { useChallenges } from '../hooks/useChallenges';
 
 export default function HabitManager({ db, user, userProfile, onLogout }) {
-  const [habits, setHabits] = useState([]);
-  const [newHabitTitle, setNewHabitTitle] = useState('');
   const [activeTab, setActiveTab] = useState('me'); // 'me', 'community', 'couple'
   
+  // New Hooks
+  const { habits, toggleHabit, deleteHabit } = useHabits(db, user);
+  const { myChallenges } = useChallenges(db, user);
+
   // Challenge State
   const [selectedChallengeId, setSelectedChallengeId] = useState(null);
 
   // Modals State
   const [showProfile, setShowProfile] = useState(false);
   const [showSocialModal, setShowSocialModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [socialTab, setSocialTab] = useState('following');
-
-  // Stats for Header
-  const [followersCount, setFollowersCount] = useState(0);
 
   // Check if user has a partner
   const hasPartner = !!userProfile?.partnerId;
-
-  // --- LÓGICA FIREBASE ---
-  useEffect(() => {
-    if (!user) return;
-
-    // Fetch Habits (Only mine for now in 'me' tab)
-    const habitsRef = collection(db, 'habitos');
-    const q = query(habitsRef, where('userId', '==', user.uid));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allHabits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      allHabits.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setHabits(allHabits);
-    });
-
-    // Fetch Followers Count
-    const fetchFollowers = async () => {
-        const qFollowers = query(collection(db, 'users'), where('following', 'array-contains', user.uid));
-        const snap = await getDocs(qFollowers);
-        setFollowersCount(snap.size);
-    };
-    fetchFollowers();
-
-    return () => unsubscribe();
-  }, [user, db]);
-
-  const addHabit = async (e) => {
-    e.preventDefault();
-    if (!newHabitTitle.trim() || !user) return;
-    try {
-      await addDoc(collection(db, 'habitos'), {
-        title: newHabitTitle,
-        userId: user.uid,
-        userName: user.email.split('@')[0],
-        createdAt: serverTimestamp(),
-        completions: [],
-        streak: 0
-      });
-      setNewHabitTitle('');
-    } catch (err) { console.error(err); }
-  };
-
-  const toggleHabit = async (habit) => {
-    const today = new Date().toLocaleDateString('en-CA');
-    const isCompletedToday = habit.completions.includes(today);
-    let newCompletions = isCompletedToday 
-      ? habit.completions.filter(d => d !== today)
-      : [...habit.completions, today];
-    let newStreak = isCompletedToday 
-      ? Math.max(0, habit.streak - 1)
-      : habit.streak + 1;
-
-    await updateDoc(doc(db, 'habitos', habit.id), {
-      completions: newCompletions,
-      streak: newStreak
-    });
-  };
-
-  const deleteHabit = async (id) => {
-    if (confirm('¿Eliminar?')) await deleteDoc(doc(db, 'habitos', id));
-  };
 
   const openSocial = (tab) => {
       setSocialTab(tab);
       setShowSocialModal(true);
   };
+
+  // Filter challenges
+  const personalChallenges = myChallenges.filter(c => c.participants.length === 1 && c.participants.includes(user.uid));
+  const groupChallenges = myChallenges.filter(c => c.participants.length > 1);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 pb-20">
@@ -131,7 +67,7 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
           <div className="flex items-center gap-2 sm:gap-4">
             <div className="flex gap-2 text-xs font-medium text-slate-600">
                 <button onClick={() => openSocial('followers')} className="hover:text-indigo-600 transition-colors">
-                    <span className="font-bold text-slate-800">{followersCount}</span> Seguidores
+                    <span className="font-bold text-slate-800">Seguidores</span>
                 </button>
                 <span className="text-slate-300">|</span>
                 <button onClick={() => openSocial('following')} className="hover:text-indigo-600 transition-colors">
@@ -184,43 +120,100 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
             
             {/* TAB: MIS OBJETIVOS */}
             {activeTab === 'me' && (
-                <div className="space-y-6">
-                    <form onSubmit={addHabit} className="relative group">
-                        <Input 
-                            value={newHabitTitle} 
-                            onChange={(e) => setNewHabitTitle(e.target.value)} 
-                            placeholder="¿Qué quieres lograr hoy?" 
-                            className="pr-14 shadow-sm border-slate-200 focus:border-indigo-500" 
-                        />
+                <div className="space-y-8">
+                    
+                    {/* Create Button */}
+                    <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg flex justify-between items-center">
+                        <div>
+                            <h3 className="font-bold text-lg mb-1">¿Nuevo objetivo?</h3>
+                            <p className="text-indigo-100 text-sm">Crea un hábito personal o un reto grupal.</p>
+                        </div>
                         <button 
-                            type="submit" 
-                            disabled={!newHabitTitle.trim()} 
-                            className="absolute right-2 top-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all active:scale-95 shadow-md shadow-indigo-200"
+                            onClick={() => setShowCreateModal(true)}
+                            className="bg-white text-indigo-600 px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-50 transition-colors shadow-sm flex items-center gap-2"
                         >
-                            <Plus size={20} />
+                            <Plus size={18} /> Crear
                         </button>
-                    </form>
-
-                    <div className="space-y-3">
-                        {habits.map(habit => (
-                            <HabitCard 
-                                key={habit.id} 
-                                habit={habit} 
-                                onToggle={() => toggleHabit(habit)}
-                                onDelete={() => deleteHabit(habit.id)}
-                                isOwner={true}
-                            />
-                        ))}
-                        {habits.length === 0 && (
-                            <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200">
-                                <div className="w-16 h-16 bg-indigo-50 text-indigo-300 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Target size={32} />
-                                </div>
-                                <p className="text-slate-500 font-medium">No tienes objetivos activos.</p>
-                                <p className="text-sm text-slate-400">¡Comienza agregando uno arriba!</p>
-                            </div>
-                        )}
                     </div>
+
+                    {/* 1. Personal Challenges (New System) */}
+                    {personalChallenges.length > 0 && (
+                        <section>
+                            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Target className="text-indigo-600" size={20} />
+                                Mis Retos Personales
+                            </h3>
+                            <div className="grid gap-3">
+                                {personalChallenges.map(challenge => (
+                                    <div 
+                                        key={challenge.id} 
+                                        onClick={() => { setActiveTab('community'); setSelectedChallengeId(challenge.id); }}
+                                        className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-indigo-200 transition-all"
+                                    >
+                                        <div>
+                                            <h4 className="font-bold text-slate-800">{challenge.title}</h4>
+                                            <p className="text-xs text-slate-500">
+                                                {challenge.frequency?.type === 'DAILY' ? 'Diario' : `${challenge.frequency?.target} veces/${challenge.frequency?.type === 'WEEKLY' ? 'sem' : 'mes'}`}
+                                            </p>
+                                        </div>
+                                        <div className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg text-xs font-bold">
+                                            Ver Progreso
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 2. Legacy Habits (Simple) */}
+                    {habits.length > 0 && (
+                        <section>
+                            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Target className="text-slate-400" size={20} />
+                                Hábitos Simples
+                            </h3>
+                            <div className="space-y-3">
+                                {habits.map(habit => (
+                                    <HabitCard 
+                                        key={habit.id} 
+                                        habit={habit} 
+                                        onToggle={() => toggleHabit(habit)}
+                                        onDelete={() => deleteHabit(habit.id)}
+                                        isOwner={true}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* 3. Group Challenges */}
+                    {groupChallenges.length > 0 && (
+                        <section>
+                            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Users className="text-orange-500" size={20} />
+                                Retos Grupales
+                            </h3>
+                            <div className="grid gap-3">
+                                {groupChallenges.map(challenge => (
+                                    <div 
+                                        key={challenge.id} 
+                                        onClick={() => { setActiveTab('community'); setSelectedChallengeId(challenge.id); }}
+                                        className="bg-white p-4 rounded-xl border border-orange-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-orange-200 transition-all"
+                                    >
+                                        <div>
+                                            <h4 className="font-bold text-slate-800">{challenge.title}</h4>
+                                            <p className="text-xs text-slate-500">
+                                                {challenge.frequency?.type === 'DAILY' ? 'Diario' : `${challenge.frequency?.target} veces/${challenge.frequency?.type === 'WEEKLY' ? 'sem' : 'mes'}`}
+                                            </p>
+                                        </div>
+                                        <div className="bg-orange-50 text-orange-600 px-3 py-1 rounded-lg text-xs font-bold">
+                                            {challenge.participants.length} Participantes
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
                 </div>
             )}
 
@@ -273,6 +266,13 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
         db={db}
         currentUser={user}
         userProfile={userProfile}
+      />
+
+      <CreateChallengeModal 
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        db={db}
+        user={user}
       />
 
     </div>

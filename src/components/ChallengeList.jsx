@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Trophy, Users, Plus, ArrowRight } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
+import { Trophy, Users, Plus, ArrowRight, Calendar, Hash } from 'lucide-react';
 import { Button } from './BaseUI';
 import CreateChallengeModal from './CreateChallengeModal';
 
@@ -24,18 +24,34 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
         participants: arrayUnion(user.uid)
       });
 
-      // 2. Create the habit for the user
-      await addDoc(collection(db, 'habitos'), {
-        title: challenge.title,
+      // 2. Initialize progress for the user
+      // Helper to get current period key (duplicated from hook for now)
+      const getPeriodKey = (frequencyType) => {
+        const now = new Date();
+        if (frequencyType === 'MONTHLY') {
+          return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+        // Weekly
+        const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+        const dayNum = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        return `${d.getUTCFullYear()}-W${weekNo}`;
+      };
+
+      const periodKey = getPeriodKey(challenge.frequency?.type || 'WEEKLY');
+      
+      await setDoc(doc(db, 'challenge_progress', `${challenge.id}_${user.uid}`), {
+        challengeId: challenge.id,
         userId: user.uid,
-        userName: user.email.split('@')[0],
-        createdAt: serverTimestamp(),
-        completions: [],
-        streak: 0,
-        challengeId: challenge.id
+        periods: {
+          [periodKey]: { count: 0, completed: false }
+        },
+        lastCheckIn: null
       });
       
-      // Optional: Navigate to detail or show success
+      // Navigate to detail
       onSelectChallenge(challenge.id);
     } catch (error) {
       console.error("Error joining challenge:", error);
@@ -65,6 +81,8 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
         ) : (
           challenges.map(challenge => {
             const isParticipant = challenge.participants?.includes(user?.uid);
+            const freqType = challenge.frequency?.type === 'DAILY' ? 'Diario' : challenge.frequency?.type === 'WEEKLY' ? 'Semanal' : 'Mensual';
+            const freqTarget = challenge.frequency?.target || 1;
             
             return (
               <div key={challenge.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
@@ -81,7 +99,20 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center gap-4 mb-4 text-xs text-slate-500">
+                    <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md">
+                        <Calendar size={12} />
+                        {freqType}
+                    </div>
+                    {challenge.frequency?.type !== 'DAILY' && (
+                        <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md">
+                            <Hash size={12} />
+                            {freqTarget} veces
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center justify-between mt-2">
                   <div className="text-xs text-slate-400">
                     Creado por <span className="font-medium text-slate-600">{challenge.creatorName}</span>
                   </div>
