@@ -112,6 +112,19 @@ export default function NotificationsPanel({ db, user, onViewProfile }) {
     return email?.split('@')[0] || 'Usuario';
   };
 
+  const NotificationUserLink = ({ uid, displayName, notifId, read }) => (
+    <span
+      className="font-semibold hover:underline cursor-pointer text-indigo-700"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onViewProfile) onViewProfile(uid);
+        if (!read) markAsRead(notifId);
+      }}
+    >
+      {displayName}
+    </span>
+  );
+
   const renderNotification = (notif) => {
     // Get display name from notification or fallback to email
     const displayName = notif.fromDisplayName || getDisplayName(notif.fromEmail);
@@ -123,16 +136,13 @@ export default function NotificationsPanel({ db, user, onViewProfile }) {
             <UserPlus size={16} className="text-indigo-600 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm text-slate-700">
-                <span
-                  className="font-semibold hover:underline cursor-pointer text-indigo-700"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onViewProfile) onViewProfile(notif.fromUid);
-                    if (!notif.read) markAsRead(notif.id);
-                  }}
-                >
-                  {displayName}
-                </span> ha comenzado a seguirte.
+                <NotificationUserLink
+                  uid={notif.fromUid}
+                  displayName={displayName}
+                  notifId={notif.id}
+                  read={notif.read}
+                />{' '}
+                ha comenzado a seguirte.
               </p>
               <p className="text-xs text-slate-400 mt-1">
                 {notif.createdAt?.toDate?.()?.toLocaleDateString() || 'Reciente'}
@@ -147,7 +157,13 @@ export default function NotificationsPanel({ db, user, onViewProfile }) {
             <Heart size={16} className="text-pink-600 mt-0.5 flex-shrink-0" fill="currentColor" />
             <div className="flex-1">
               <p className="text-sm text-slate-700">
-                <span className="font-semibold">{displayName}</span> quiere ser tu pareja 💕
+                <NotificationUserLink
+                  uid={notif.fromUid}
+                  displayName={displayName}
+                  notifId={notif.id}
+                  read={notif.read}
+                />{' '}
+                quiere ser tu pareja 💕
               </p>
               <div className="flex gap-2 mt-2">
                 <button
@@ -173,7 +189,13 @@ export default function NotificationsPanel({ db, user, onViewProfile }) {
             <Heart size={16} className="text-pink-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm text-slate-700">
-                <span className="font-semibold">{displayName}</span> te envió un beso de ánimo 💋
+                <NotificationUserLink
+                  uid={notif.fromUid}
+                  displayName={displayName}
+                  notifId={notif.id}
+                  read={notif.read}
+                />{' '}
+                te envió un beso de ánimo 💋
               </p>
               {notif.message && (
                 <p className="text-xs text-slate-500 mt-1 italic">"{notif.message}"</p>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { User, Edit2, Save, X, Award, Calendar, Camera } from 'lucide-react';
+import { User, Edit2, Save, X, Award, Calendar, Camera, Heart, UserPlus } from 'lucide-react';
 import { Button, Input, Card } from './BaseUI';
 
-export default function UserProfile({ user, userProfile, db, onClose, habits = [], isReadOnly = false }) {
+export default function UserProfile({ user, userProfile, currentUserProfile, db, onClose, habits = [], isReadOnly = false, onInvitePartner, onFollow, onUnfollow }) {
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState(userProfile?.displayName || '');
   const [bio, setBio] = useState(userProfile?.bio || '');
@@ -67,6 +67,10 @@ export default function UserProfile({ user, userProfile, db, onClose, habits = [
     }
   };
 
+  const isFollowing = currentUserProfile?.following?.includes(userProfile?.uid);
+  // Check if the viewed user follows the current user
+  const isFollowedByTarget = userProfile?.following?.includes(user?.uid);
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
@@ -97,6 +101,40 @@ export default function UserProfile({ user, userProfile, db, onClose, habits = [
             </div>
             <h2 className="mt-3 text-xl font-bold text-slate-800">{userProfile?.displayName || userProfile?.email?.split('@')[0] || 'Usuario'}</h2>
             <p className="text-sm text-slate-500">{userProfile?.email}</p>
+
+            <div className="flex gap-2 mt-3">
+              {/* Invite Partner Button */}
+              {isReadOnly && !currentUserProfile?.partnerId && onInvitePartner && (
+                <button
+                  onClick={() => onInvitePartner(userProfile)}
+                  className="flex items-center gap-2 bg-pink-50 text-pink-600 px-4 py-2 rounded-full text-sm font-bold hover:bg-pink-100 transition-colors"
+                >
+                  <Heart size={16} fill="currentColor" />
+                  Invitar a ser Pareja
+                </button>
+              )}
+
+              {/* Follow Button */}
+              {isReadOnly && !isFollowing && onFollow && (
+                <button
+                  onClick={() => onFollow(userProfile.uid)}
+                  className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-indigo-700 transition-colors"
+                >
+                  <UserPlus size={16} />
+                  {isFollowedByTarget ? 'Seguir de vuelta' : 'Seguir'}
+                </button>
+              )}
+
+              {isReadOnly && isFollowing && (
+                <button
+                  onClick={() => onUnfollow && onUnfollow(userProfile.uid)}
+                  className="flex items-center gap-2 bg-slate-100 text-slate-500 px-4 py-2 rounded-full text-sm font-bold hover:bg-red-50 hover:text-red-600 transition-colors group"
+                >
+                  <span className="group-hover:hidden">Siguiendo</span>
+                  <span className="hidden group-hover:inline">Dejar de seguir</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Edit Form or Bio Display */}

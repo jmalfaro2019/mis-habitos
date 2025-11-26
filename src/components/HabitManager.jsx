@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Target, Plus, LogOut, Users, Heart } from 'lucide-react';
-import { getDoc, doc } from 'firebase/firestore';
+import { getDoc, doc, addDoc, collection, serverTimestamp, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { Button } from './BaseUI.jsx';
 import HabitCard from './HabitCard.jsx';
 import NotificationsPanel from './NotificationsPanel.jsx';
@@ -31,6 +31,14 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [socialTab, setSocialTab] = useState('following');
 
+    // Confirmation Modal State
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: null
+    });
+
     // Check if user has a partner
     const hasPartner = !!userProfile?.partnerId;
 
@@ -53,6 +61,94 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
             } catch (error) {
                 console.error("Error fetching user profile:", error);
             }
+        }
+    };
+
+    const handleFollowUser = async (targetUid) => {
+        try {
+            await updateDoc(doc(db, 'users', user.uid), {
+                following: arrayUnion(targetUid)
+            });
+
+            // Create notification for the followed user
+            const displayName = userProfile?.displayName || user.email.split('@')[0];
+            await addDoc(collection(db, 'notifications'), {
+                userId: targetUid,
+                type: 'new_follower',
+                fromUid: user.uid,
+                fromEmail: user.email,
+                fromDisplayName: displayName,
+                read: false,
+                createdAt: serverTimestamp()
+            });
+
+            alert("¡Ahora sigues a este usuario!");
+        } catch (err) {
+            console.error("Error following user:", err);
+            alert("Error al seguir usuario");
+        }
+    };
+
+    const executeUnfollow = async (targetUid) => {
+        try {
+            await updateDoc(doc(db, 'users', user.uid), {
+                following: arrayRemove(targetUid)
+            });
+            // Close modal
+            setConfirmModal({ ...confirmModal, isOpen: false });
+        } catch (err) {
+            console.error("Error unfollowing user:", err);
+            alert("Error al dejar de seguir");
+        }
+    };
+
+    const handleUnfollowUser = (targetUid) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Dejar de seguir',
+            message: '¿Estás seguro de que quieres dejar de seguir a este usuario?',
+            onConfirm: () => executeUnfollow(targetUid)
+        });
+    };
+
+    const handleInvitePartner = async (targetUser) => {
+        try {
+            // Check if user already has a partner
+            if (userProfile?.partnerId) {
+                alert("Ya tienes pareja. Solo puedes tener una pareja a la vez.");
+                return;
+            }
+
+            const displayName = userProfile?.displayName || user.email.split('@')[0];
+
+            if (confirm(`¿Quieres invitar a ${targetUser.displayName || targetUser.email.split('@')[0]} a ser tu pareja en la app?`)) {
+                // Create couple invite
+                await addDoc(collection(db, 'couple_invites'), {
+                    fromUid: user.uid,
+                    fromEmail: user.email,
+                    fromDisplayName: displayName,
+                    toUid: targetUser.uid,
+                    toEmail: targetUser.email,
+                    status: 'pending',
+                    createdAt: serverTimestamp()
+                });
+
+                // Create notification for the recipient
+                await addDoc(collection(db, 'notifications'), {
+                    userId: targetUser.uid,
+                    type: 'couple_invite',
+                    fromUid: user.uid,
+                    fromEmail: user.email,
+                    fromDisplayName: displayName,
+                    read: false,
+                    createdAt: serverTimestamp()
+                });
+
+                alert("¡Invitación enviada! 💕");
+            }
+        } catch (error) {
+            console.error("Error sending couple invite:", error);
+            alert("Error al enviar invitación. Inténtalo de nuevo.");
         }
     };
 
@@ -271,10 +367,14 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
                 <UserProfile
                     user={user}
                     userProfile={viewingProfile}
+                    currentUserProfile={userProfile}
                     db={db}
                     onClose={() => setViewingProfile(null)}
                     habits={habits}
                     isReadOnly={viewingProfile.uid !== user.uid}
+                    onInvitePartner={handleInvitePartner}
+                    onFollow={handleFollowUser}
+                    onUnfollow={handleUnfollowUser}
                 />
             )}
 
@@ -285,6 +385,8 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
                 db={db}
                 currentUser={user}
                 userProfile={userProfile}
+                onViewProfile={handleViewProfile}
+                onUnfollow={handleUnfollowUser}
             />
 
             <CreateChallengeModal
@@ -293,6 +395,30 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
                 db={db}
                 user={user}
             />
+
+            {/* Confirmation Modal */}
+            {confirmModal.isOpen && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <h3 className="font-bold text-lg text-slate-800 mb-2">{confirmModal.title}</h3>
+                        <p className="text-slate-600 mb-6">{confirmModal.message}</p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                                className="px-4 py-2 text-slate-500 font-medium hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmModal.onConfirm}
+                                className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                                Sí, dejar de seguir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
     );

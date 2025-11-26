@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  doc, 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
   getDoc,
   updateDoc,
   arrayUnion,
@@ -15,13 +15,15 @@ import {
 import { X, Search, UserPlus, UserMinus, Heart } from 'lucide-react';
 import { Input, Button } from './BaseUI';
 
-export default function SocialModal({ 
-  isOpen, 
-  onClose, 
+export default function SocialModal({
+  isOpen,
+  onClose,
   initialTab = 'following', // 'followers', 'following', or 'search'
-  db, 
-  currentUser, 
-  userProfile 
+  db,
+  currentUser,
+  userProfile,
+  onViewProfile,
+  onUnfollow
 }) {
   if (!isOpen) return null;
 
@@ -57,13 +59,13 @@ export default function SocialModal({
         }
 
         if (userIds.length > 0) {
-            // Fetch details for each followed user
-            const usersData = [];
-            for (const uid of userIds) {
-                const d = await getDoc(doc(db, 'users', uid));
-                if (d.exists()) usersData.push(d.data());
-            }
-            setUsers(usersData);
+          // Fetch details for each followed user
+          const usersData = [];
+          for (const uid of userIds) {
+            const d = await getDoc(doc(db, 'users', uid));
+            if (d.exists()) usersData.push(d.data());
+          }
+          setUsers(usersData);
         }
       } catch (error) {
         console.error("Error fetching users:", error);
@@ -114,8 +116,8 @@ export default function SocialModal({
       });
 
       // Update search results to show followed status
-      setSearchResults(searchResults.map(u => 
-        u.uid === targetUid ? {...u, _justFollowed: true} : u
+      setSearchResults(searchResults.map(u =>
+        u.uid === targetUid ? { ...u, _justFollowed: true } : u
       ));
     } catch (err) {
       console.error(err);
@@ -123,55 +125,20 @@ export default function SocialModal({
     }
   };
 
-  const handleUnfollow = async (targetUid) => {
-      try {
-          await updateDoc(doc(db, 'users', currentUser.uid), {
-              following: arrayRemove(targetUid)
-          });
-          // Optimistic update
-          setUsers(users.filter(u => u.uid !== targetUid));
-      } catch (err) { console.error(err); }
-  };
+  const handleLocalUnfollow = async (targetUid) => {
+    // Fallback if onUnfollow is not provided (though it should be)
+    if (onUnfollow) {
+      onUnfollow(targetUid);
+      return;
+    }
 
-  const handleInvitePartner = async (targetUser) => {
-      try {
-          // Check if user already has a partner
-          if (userProfile?.partnerId) {
-              alert("Ya tienes pareja. Solo puedes tener una pareja a la vez.");
-              return;
-          }
-
-          const displayName = userProfile?.displayName || currentUser.email.split('@')[0];
-
-          if (confirm(`¿Quieres invitar a ${targetUser.displayName || targetUser.email.split('@')[0]} a ser tu pareja en la app?`)) {
-              // Create couple invite
-              await addDoc(collection(db, 'couple_invites'), {
-                  fromUid: currentUser.uid,
-                  fromEmail: currentUser.email,
-                  fromDisplayName: displayName,
-                  toUid: targetUser.uid,
-                  toEmail: targetUser.email,
-                  status: 'pending',
-                  createdAt: serverTimestamp()
-              });
-
-              // Create notification for the recipient
-              await addDoc(collection(db, 'notifications'), {
-                  userId: targetUser.uid,
-                  type: 'couple_invite',
-                  fromUid: currentUser.uid,
-                  fromEmail: currentUser.email,
-                  fromDisplayName: displayName,
-                  read: false,
-                  createdAt: serverTimestamp()
-              });
-
-              alert("¡Invitación enviada! 💕");
-          }
-      } catch (error) {
-          console.error("Error sending couple invite:", error);
-          alert("Error al enviar invitación. Inténtalo de nuevo.");
-      }
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        following: arrayRemove(targetUid)
+      });
+      // Optimistic update
+      setUsers(users.filter(u => u.uid !== targetUid));
+    } catch (err) { console.error(err); }
   };
 
   const isFollowing = (uid) => {
@@ -181,7 +148,7 @@ export default function SocialModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white rounded-2xl w-full max-w-md h-[80vh] flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200">
-        
+
         {/* Header */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h2 className="font-bold text-lg text-slate-800">Social</h2>
@@ -192,19 +159,19 @@ export default function SocialModal({
 
         {/* Tabs */}
         <div className="flex p-2 gap-2 border-b border-slate-100">
-          <button 
+          <button
             onClick={() => setActiveTab('search')}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'search' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             Buscar
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('following')}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'following' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             Siguiendo
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('followers')}
             className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'followers' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
           >
@@ -216,14 +183,14 @@ export default function SocialModal({
         {activeTab === 'search' && (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <form onSubmit={handleSearch} className="relative">
-              <Input 
+              <Input
                 type="email"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar por email..."
                 className="pr-12"
               />
-              <button 
+              <button
                 type="submit"
                 disabled={!searchTerm.trim() || searching}
                 className="absolute right-2 top-2 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all"
@@ -242,7 +209,10 @@ export default function SocialModal({
                   const following = isFollowing(user.uid) || user._justFollowed;
                   return (
                     <div key={user.uid} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <div className="flex items-center gap-3 overflow-hidden">
+                      <div
+                        className="flex items-center gap-3 overflow-hidden cursor-pointer hover:opacity-70 transition-opacity"
+                        onClick={() => onViewProfile && onViewProfile(user.uid)}
+                      >
                         <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold shrink-0">
                           {(user.displayName || user.email)[0].toUpperCase()}
                         </div>
@@ -251,13 +221,13 @@ export default function SocialModal({
                           <p className="text-xs text-slate-500 truncate">{user.email}</p>
                         </div>
                       </div>
-                      
+
                       {following ? (
                         <span className="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg">
                           Siguiendo
                         </span>
                       ) : (
-                        <button 
+                        <button
                           onClick={() => handleFollow(user.uid)}
                           className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors flex items-center gap-1"
                         >
@@ -280,12 +250,15 @@ export default function SocialModal({
               <p className="text-center text-slate-400 py-8">Cargando...</p>
             ) : users.length === 0 ? (
               <p className="text-center text-slate-400 py-8">
-                  {activeTab === 'following' ? 'No sigues a nadie aún.' : 'Aún no tienes seguidores.'}
+                {activeTab === 'following' ? 'No sigues a nadie aún.' : 'Aún no tienes seguidores.'}
               </p>
             ) : (
               users.map(user => (
                 <div key={user.uid} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex items-center gap-3 overflow-hidden">
+                  <div
+                    className="flex items-center gap-3 overflow-hidden cursor-pointer hover:opacity-70 transition-opacity"
+                    onClick={() => onViewProfile && onViewProfile(user.uid)}
+                  >
                     <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold shrink-0">
                       {(user.displayName || user.email)[0].toUpperCase()}
                     </div>
@@ -294,31 +267,19 @@ export default function SocialModal({
                       <p className="text-xs text-slate-500 truncate">{user.email}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-1">
-                      {activeTab === 'following' && (
-                          <>
-                              <button 
-                                  onClick={() => handleInvitePartner(user)}
-                                  disabled={userProfile?.partnerId}
-                                  className={`p-2 rounded-full transition-colors ${
-                                      userProfile?.partnerId 
-                                      ? 'text-slate-300 cursor-not-allowed' 
-                                      : 'text-pink-400 hover:bg-pink-50 hover:text-pink-600'
-                                  }`}
-                                  title={userProfile?.partnerId ? "Ya tienes pareja" : "Invitar como Pareja"}
-                              >
-                                  <Heart size={18} />
-                              </button>
-                              <button 
-                                  onClick={() => handleUnfollow(user.uid)}
-                                  className="p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors"
-                                  title="Dejar de seguir"
-                              >
-                                  <UserMinus size={18} />
-                              </button>
-                          </>
-                      )}
+                    {activeTab === 'following' && (
+                      <>
+                        <button
+                          onClick={() => handleLocalUnfollow(user.uid)}
+                          className="p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors"
+                          title="Dejar de seguir"
+                        >
+                          <UserMinus size={18} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))
