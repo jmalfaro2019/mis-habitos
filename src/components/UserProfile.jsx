@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { User, Edit2, Save, X, Award, Calendar, Camera, Heart, UserPlus } from 'lucide-react';
+import { User, Edit2, Save, X, Award, Calendar, Camera, Heart, UserPlus, CheckCircle } from 'lucide-react';
 import { Button, Input, Card } from './BaseUI';
 
 export default function UserProfile({ user, userProfile, currentUserProfile, db, storage, onClose, habits = [], isReadOnly = false, onInvitePartner, onFollow, onUnfollow }) {
@@ -10,6 +10,7 @@ export default function UserProfile({ user, userProfile, currentUserProfile, db,
   const [bio, setBio] = useState(userProfile?.bio || '');
   const [photoURL, setPhotoURL] = useState(userProfile?.photoURL || '');
   const [loading, setLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const fileInputRef = useRef(null);
 
   // State for read-only mode stats
@@ -87,9 +88,18 @@ export default function UserProfile({ user, userProfile, currentUserProfile, db,
         photoURL: url
       });
 
+      // Show success message
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+
     } catch (error) {
       console.error("Error uploading image:", error);
-      alert("Error al subir la imagen");
+      console.error("Full Error Details:", {
+        code: error.code,
+        message: error.message,
+        serverResponse: error.serverResponse
+      });
+      alert(`Error al subir la imagen: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -247,6 +257,14 @@ export default function UserProfile({ user, userProfile, currentUserProfile, db,
 
         </div>
       </div>
+
+      {/* Success Toast */}
+      {showSuccess && (
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-xl animate-in fade-in slide-in-from-top-4 flex items-center gap-2 z-[60]">
+          <CheckCircle size={20} />
+          <span className="font-bold text-sm">Foto subida satisfactoriamente</span>
+        </div>
+      )}
     </div>
   );
 }

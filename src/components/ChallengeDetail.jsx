@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy, doc, getDoc, getDocs } from 'firebase/firestore';
-import { ArrowLeft, Trophy, MessageSquare, Send, CheckCircle, Circle, Calendar, Hash } from 'lucide-react';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { ArrowLeft, Trophy, MessageSquare, Send, CheckCircle, Circle, Calendar, Hash, Trash2, LogOut } from 'lucide-react';
 import { Button, Input } from './BaseUI';
 import { useChallenges } from '../hooks/useChallenges';
 
@@ -10,7 +10,7 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
   const [posts, setPosts] = useState([]);
   const [newPost, setNewPost] = useState('');
   const [activeTab, setActiveTab] = useState('ranking'); // 'ranking', 'wall'
-  
+
   const { checkIn } = useChallenges(db, user);
 
   // Helper to get current period key (duplicated from hook for now)
@@ -31,20 +31,20 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
   // Load Challenge Info
   useEffect(() => {
     const fetchChallenge = async () => {
-        try {
-            const docRef = doc(db, 'challenges', challengeId);
-            const snap = await getDoc(docRef);
-            if (snap.exists()) {
-                const data = snap.data();
-                // Ensure frequency exists for legacy data
-                if (!data.frequency) {
-                    data.frequency = { type: 'WEEKLY', target: 1 };
-                }
-                setChallenge({ id: snap.id, ...data });
-            }
-        } catch (error) {
-            console.error("Error loading challenge:", error);
+      try {
+        const docRef = doc(db, 'challenges', challengeId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          // Ensure frequency exists for legacy data
+          if (!data.frequency) {
+            data.frequency = { type: 'WEEKLY', target: 1 };
+          }
+          setChallenge({ id: snap.id, ...data });
         }
+      } catch (error) {
+        console.error("Error loading challenge:", error);
+      }
     };
     fetchChallenge();
   }, [challengeId, db]);
@@ -56,33 +56,33 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
     const q = query(collection(db, 'challenge_progress'), where('challengeId', '==', challengeId));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const progressList = snapshot.docs.map(d => d.data());
-      
+
       const progressWithNames = await Promise.all(progressList.map(async (p) => {
-          let name = 'Usuario';
-          if (p.userId === user.uid) {
-              name = 'Tú';
-          } else {
-              try {
-                  const uSnap = await getDoc(doc(db, 'users', p.userId));
-                  if (uSnap.exists()) name = uSnap.data().displayName || uSnap.data().email.split('@')[0];
-              } catch (e) { console.error(e); }
-          }
-          return { ...p, name };
+        let name = 'Usuario';
+        if (p.userId === user.uid) {
+          name = 'Tú';
+        } else {
+          try {
+            const uSnap = await getDoc(doc(db, 'users', p.userId));
+            if (uSnap.exists()) name = uSnap.data().displayName || uSnap.data().email.split('@')[0];
+          } catch (e) { console.error(e); }
+        }
+        return { ...p, name };
       }));
 
       // Calculate current period progress
       const currentPeriodKey = getPeriodKey(challenge.frequency?.type || 'WEEKLY');
-      
+
       const ranked = progressWithNames.map(p => {
-          const periodData = p.periods?.[currentPeriodKey] || { count: 0, completed: false };
-          return {
-              ...p,
-              currentCount: periodData.count,
-              isCompleted: periodData.completed,
-              totalCheckins: p.checkins?.length || 0
-          };
+        const periodData = p.periods?.[currentPeriodKey] || { count: 0, completed: false };
+        return {
+          ...p,
+          currentCount: periodData.count,
+          isCompleted: periodData.completed,
+          totalCheckins: p.checkins?.length || 0
+        };
       });
-      
+
       ranked.sort((a, b) => (b.isCompleted === a.isCompleted ? 0 : b.isCompleted ? 1 : -1) || b.currentCount - a.currentCount);
       setParticipantsProgress(ranked);
     });
@@ -92,31 +92,31 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
   // Load Wall Posts
   useEffect(() => {
     const q = query(
-        collection(db, 'challenge_posts'), 
-        where('challengeId', '==', challengeId),
-        orderBy('createdAt', 'desc')
+      collection(db, 'challenge_posts'),
+      where('challengeId', '==', challengeId),
+      orderBy('createdAt', 'desc')
     );
-    
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setPosts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => {
-        // Suppress index error for MVP, just warn
-        if (error.code !== 'failed-precondition') {
-            console.error("Error loading posts:", error);
-        } else {
-            console.warn("Missing index for posts. Create one in Firebase Console.");
-        }
+      // Suppress index error for MVP, just warn
+      if (error.code !== 'failed-precondition') {
+        console.error("Error loading posts:", error);
+      } else {
+        console.warn("Missing index for posts. Create one in Firebase Console.");
+      }
     });
     return () => unsubscribe();
   }, [challengeId, db]);
 
   const handleCheckIn = async () => {
-      if (!challenge) return;
-      const freq = challenge.frequency || { type: 'WEEKLY', target: 1 };
-      const success = await checkIn(challenge.id, freq.type, freq.target);
-      if (success) {
-          // Optional: Show confetti or success message
-      }
+    if (!challenge) return;
+    const freq = challenge.frequency || { type: 'WEEKLY', target: 1 };
+    const success = await checkIn(challenge.id, freq.type, freq.target);
+    if (success) {
+      // Optional: Show confetti or success message
+    }
   };
 
   const handlePost = async (e) => {
@@ -134,6 +134,32 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
     } catch (err) { console.error(err); }
   };
 
+  const handleDeleteChallenge = async () => {
+    if (confirm("¿Estás seguro de que quieres eliminar este reto? Esta acción no se puede deshacer.")) {
+      try {
+        await deleteDoc(doc(db, 'challenges', challengeId));
+        onBack(); // Go back to list
+      } catch (error) {
+        console.error("Error deleting challenge:", error);
+        alert("Error al eliminar el reto.");
+      }
+    }
+  };
+
+  const handleUnsubscribe = async () => {
+    if (confirm("¿Estás seguro de que quieres salir de este reto?")) {
+      try {
+        await updateDoc(doc(db, 'challenges', challengeId), {
+          participants: arrayRemove(user.uid)
+        });
+        onBack(); // Go back to list
+      } catch (error) {
+        console.error("Error unsubscribing:", error);
+        alert("Error al salir del reto.");
+      }
+    }
+  };
+
   if (!challenge) return <div className="p-8 text-center text-slate-400">Cargando reto...</div>;
 
   const myProgress = participantsProgress.find(p => p.userId === user.uid);
@@ -141,68 +167,95 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
   const freqTypeRaw = challenge.frequency?.type || 'WEEKLY';
   const freqType = freqTypeRaw === 'DAILY' ? 'hoy' : freqTypeRaw === 'WEEKLY' ? 'esta semana' : 'este mes';
 
+  // Determine if user is the only participant (personal challenge) or if it's a group challenge
+  const isPersonal = challenge.participants?.length === 1 && challenge.participants.includes(user.uid);
+  const isGroup = challenge.participants?.length > 1;
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-        <button onClick={onBack} className="text-slate-400 hover:text-slate-600 mb-4 flex items-center gap-1 text-sm font-bold">
-          <ArrowLeft size={16} /> Volver
-        </button>
-        
+        <div className="flex justify-between items-start mb-4">
+          <button onClick={onBack} className="text-slate-400 hover:text-slate-600 flex items-center gap-1 text-sm font-bold">
+            <ArrowLeft size={16} /> Volver
+          </button>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            {isPersonal && (
+              <button
+                onClick={handleDeleteChallenge}
+                className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors"
+                title="Eliminar Reto"
+              >
+                <Trash2 size={18} />
+              </button>
+            )}
+            {isGroup && (
+              <button
+                onClick={handleUnsubscribe}
+                className="text-slate-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors"
+                title="Salir del Reto"
+              >
+                <LogOut size={18} />
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex justify-between items-start">
-            <div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-1">{challenge.title}</h2>
-                <div className="flex items-center gap-3 text-xs text-slate-500 mb-4">
-                    <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                        <Calendar size={12} /> {freqTypeRaw}
-                    </span>
-                    <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                        <Hash size={12} /> Meta: {freqTarget}
-                    </span>
-                </div>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-1">{challenge.title}</h2>
+            <div className="flex items-center gap-3 text-xs text-slate-500 mb-4">
+              <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                <Calendar size={12} /> {freqTypeRaw}
+              </span>
+              <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                <Hash size={12} /> Meta: {freqTarget}
+              </span>
             </div>
-            
-            {/* Big Check-in Button */}
-            <div className="text-center">
-                <button 
-                    onClick={handleCheckIn}
-                    disabled={myProgress?.isCompleted}
-                    className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
-                        myProgress?.isCompleted 
-                        ? 'bg-green-100 text-green-600 cursor-default' 
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-indigo-200'
-                    }`}
-                >
-                    {myProgress?.isCompleted ? <CheckCircle size={32} /> : <CheckCircle size={32} />}
-                </button>
-                <p className="text-xs font-bold text-slate-400 mt-2">
-                    {myProgress?.currentCount || 0} / {freqTarget}
-                </p>
-            </div>
+          </div>
+
+          {/* Big Check-in Button */}
+          <div className="text-center">
+            <button
+              onClick={handleCheckIn}
+              disabled={myProgress?.isCompleted}
+              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${myProgress?.isCompleted
+                  ? 'bg-green-100 text-green-600 cursor-default'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-indigo-200'
+                }`}
+            >
+              {myProgress?.isCompleted ? <CheckCircle size={32} /> : <CheckCircle size={32} />}
+            </button>
+            <p className="text-xs font-bold text-slate-400 mt-2">
+              {myProgress?.currentCount || 0} / {freqTarget}
+            </p>
+          </div>
         </div>
 
         {/* Progress Bar */}
         <div className="w-full bg-slate-100 rounded-full h-2.5 mt-2 overflow-hidden">
-            <div 
-                className={`h-2.5 rounded-full transition-all duration-500 ${myProgress?.isCompleted ? 'bg-green-500' : 'bg-indigo-500'}`} 
-                style={{ width: `${Math.min(100, ((myProgress?.currentCount || 0) / freqTarget) * 100)}%` }}
-            ></div>
+          <div
+            className={`h-2.5 rounded-full transition-all duration-500 ${myProgress?.isCompleted ? 'bg-green-500' : 'bg-indigo-500'}`}
+            style={{ width: `${Math.min(100, ((myProgress?.currentCount || 0) / freqTarget) * 100)}%` }}
+          ></div>
         </div>
         <p className="text-xs text-center text-slate-400 mt-2">
-            Has completado {myProgress?.currentCount || 0} de {freqTarget} objetivos {freqType}.
+          Has completado {myProgress?.currentCount || 0} de {freqTarget} objetivos {freqType}.
         </p>
       </div>
 
       {/* Tabs */}
       <div className="flex p-1 bg-white rounded-xl shadow-sm border border-slate-100">
-        <button 
-          onClick={() => setActiveTab('ranking')} 
+        <button
+          onClick={() => setActiveTab('ranking')}
           className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'ranking' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500'}`}
         >
           <Trophy size={16} /> Ranking
         </button>
-        <button 
-          onClick={() => setActiveTab('wall')} 
+        <button
+          onClick={() => setActiveTab('wall')}
           className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'wall' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500'}`}
         >
           <MessageSquare size={16} /> Muro
@@ -221,14 +274,14 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
                   </div>
                   <div>
                     <p className={`font-bold ${p.userId === user.uid ? 'text-indigo-700' : 'text-slate-700'}`}>
-                        {p.name}
+                      {p.name}
                     </p>
                     <div className="flex items-center gap-1 text-xs text-slate-400">
-                        {p.isCompleted ? (
-                            <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle size={10} /> Completado</span>
-                        ) : (
-                            <span>{p.currentCount} / {freqTarget}</span>
-                        )}
+                      {p.isCompleted ? (
+                        <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle size={10} /> Completado</span>
+                      ) : (
+                        <span>{p.currentCount} / {freqTarget}</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -243,10 +296,10 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
           <div className="space-y-4">
             {/* Post Form */}
             <form onSubmit={handlePost} className="flex gap-2">
-              <Input 
-                value={newPost} 
-                onChange={(e) => setNewPost(e.target.value)} 
-                placeholder="Comparte tu progreso..." 
+              <Input
+                value={newPost}
+                onChange={(e) => setNewPost(e.target.value)}
+                placeholder="Comparte tu progreso..."
                 className="flex-1"
               />
               <button type="submit" disabled={!newPost.trim()} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 disabled:opacity-50">
@@ -261,14 +314,14 @@ export default function ChallengeDetail({ db, user, challengeId, onBack }) {
                   <div className="flex justify-between items-start mb-1">
                     <span className="font-bold text-sm text-slate-700">{post.userName}</span>
                     <span className="text-[10px] text-slate-400">
-                        {post.createdAt?.seconds ? new Date(post.createdAt.seconds * 1000).toLocaleDateString() : 'Ahora'}
+                      {post.createdAt?.seconds ? new Date(post.createdAt.seconds * 1000).toLocaleDateString() : 'Ahora'}
                     </span>
                   </div>
                   <p className="text-slate-600 text-sm">{post.content}</p>
                 </div>
               ))}
               {posts.length === 0 && (
-                  <p className="text-center text-slate-400 text-sm py-4">Sé el primero en escribir algo.</p>
+                <p className="text-center text-slate-400 text-sm py-4">Sé el primero en escribir algo.</p>
               )}
             </div>
           </div>
