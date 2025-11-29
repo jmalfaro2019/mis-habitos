@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { User, Edit2, Save, X, Award, Calendar, Camera, Heart, UserPlus } from 'lucide-react';
 import { Button, Input, Card } from './BaseUI';
 
-export default function UserProfile({ user, userProfile, currentUserProfile, db, onClose, habits = [], isReadOnly = false, onInvitePartner, onFollow, onUnfollow }) {
+export default function UserProfile({ user, userProfile, currentUserProfile, db, storage, onClose, habits = [], isReadOnly = false, onInvitePartner, onFollow, onUnfollow }) {
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState(userProfile?.displayName || '');
   const [bio, setBio] = useState(userProfile?.bio || '');
   const [photoURL, setPhotoURL] = useState(userProfile?.photoURL || '');
   const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // State for read-only mode stats
   const [viewedUserHabits, setViewedUserHabits] = useState([]);
@@ -67,6 +69,32 @@ export default function UserProfile({ user, userProfile, currentUserProfile, db,
     }
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !storage || !user) return;
+
+    setLoading(true);
+    try {
+      const storageRef = ref(storage, `profile_images/${user.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+
+      setPhotoURL(url);
+
+      // Auto-save the new photo URL
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        photoURL: url
+      });
+
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Error al subir la imagen");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const isFollowing = currentUserProfile?.following?.includes(userProfile?.uid);
   // Check if the viewed user follows the current user
   const isFollowedByTarget = userProfile?.following?.includes(user?.uid);
@@ -86,16 +114,35 @@ export default function UserProfile({ user, userProfile, currentUserProfile, db,
           {/* Avatar & Info */}
           <div className="relative -mt-12 mb-4 flex flex-col items-center">
             <div className="w-24 h-24 bg-white rounded-full p-1 shadow-lg relative group">
-              <div className="w-full h-full bg-slate-100 rounded-full flex items-center justify-center text-slate-400 overflow-hidden">
+              <div className="w-full h-full bg-slate-100 rounded-full flex items-center justify-center text-slate-400 overflow-hidden relative">
                 {photoURL ? (
                   <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
                 ) : (
                   <User size={40} />
                 )}
+
+                {/* Loading Overlay */}
+                {loading && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
               </div>
-              {isEditing && !isReadOnly && (
-                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+
+              {/* Camera Icon Overlay - Only show if NOT read-only */}
+              {!isReadOnly && (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
+                >
                   <Camera size={24} />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
                 </div>
               )}
             </div>
@@ -159,15 +206,8 @@ export default function UserProfile({ user, userProfile, currentUserProfile, db,
                     className="text-sm py-2"
                   />
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 mb-1 block">Foto de Perfil (URL)</label>
-                  <Input
-                    value={photoURL}
-                    onChange={(e) => setPhotoURL(e.target.value)}
-                    placeholder="https://ejemplo.com/foto.jpg"
-                    className="text-sm py-2"
-                  />
-                </div>
+                {/* Removed manual URL input in favor of file upload, but keeping it as fallback or alternative if desired, or just removing to clean up UI as per request */}
+
                 <div>
                   <label className="text-xs font-bold text-slate-500 mb-1 block">Sobre mí</label>
                   <textarea

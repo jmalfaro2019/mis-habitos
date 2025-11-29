@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged 
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
 } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
@@ -28,11 +28,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+import { getStorage } from 'firebase/storage';
+const storage = getStorage(app);
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null); // Datos extendidos del usuario (following, etc.)
-  const [view, setView] = useState('loading'); 
+  const [view, setView] = useState('loading');
   const [errorMsg, setErrorMsg] = useState('');
 
   // 1. Manejo de Sesión
@@ -42,24 +44,24 @@ export default function App() {
         setUser(u);
         // Suscribirse a cambios en el perfil del usuario
         const unsubscribeProfile = onSnapshot(doc(db, 'users', u.uid), (docSnap) => {
-            if (docSnap.exists()) {
-                setUserProfile(docSnap.data());
-            } else {
-                // Si no existe (ej. usuario antiguo), crear uno básico
-                const newProfile = {
-                    uid: u.uid,
-                    email: u.email,
-                    following: []
-                };
-                setDoc(doc(db, 'users', u.uid), newProfile);
-                setUserProfile(newProfile);
-            }
+          if (docSnap.exists()) {
+            setUserProfile(docSnap.data());
+          } else {
+            // Si no existe (ej. usuario antiguo), crear uno básico
+            const newProfile = {
+              uid: u.uid,
+              email: u.email,
+              following: []
+            };
+            setDoc(doc(db, 'users', u.uid), newProfile);
+            setUserProfile(newProfile);
+          }
         }, (error) => {
-            console.error("Error listening to user profile:", error);
+          console.error("Error listening to user profile:", error);
         });
 
         setView('dashboard');
-        
+
         // Cleanup de la suscripción al perfil cuando cambia el usuario o se desmonta
         return () => unsubscribeProfile();
       } else {
@@ -88,7 +90,7 @@ export default function App() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const u = userCredential.user;
-      
+
       // Crear documento de usuario en Firestore
       const newProfile = {
         uid: u.uid,
@@ -96,7 +98,7 @@ export default function App() {
         following: []
       };
       await setDoc(doc(db, 'users', u.uid), newProfile);
-      
+
     } catch (err) {
       console.error(err);
       if (err.code === 'auth/email-already-in-use') setErrorMsg('Este correo ya está registrado.');
@@ -116,21 +118,22 @@ export default function App() {
 
   if (view === 'login' || view === 'register') {
     return (
-      <LoginRegister 
-        onLogin={handleLogin} 
-        onRegister={handleRegister} 
-        errorMsg={errorMsg} 
-        setErrorMsg={setErrorMsg} 
+      <LoginRegister
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        errorMsg={errorMsg}
+        setErrorMsg={setErrorMsg}
       />
     );
   }
 
   return (
-    <HabitManager 
+    <HabitManager
       db={db}
       user={user}
       userProfile={userProfile}
       onLogout={handleLogout}
+      storage={storage}
     />
   );
 }

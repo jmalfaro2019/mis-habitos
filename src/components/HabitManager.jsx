@@ -15,7 +15,7 @@ import CreateChallengeModal from './CreateChallengeModal.jsx';
 import { useHabits } from '../hooks/useHabits';
 import { useChallenges } from '../hooks/useChallenges';
 
-export default function HabitManager({ db, user, userProfile, onLogout }) {
+export default function HabitManager({ db, user, userProfile, onLogout, storage }) {
     const [activeTab, setActiveTab] = useState('me'); // 'me', 'community', 'couple'
 
     // New Hooks
@@ -363,21 +363,6 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
             </main>
 
             {/* Modals */}
-            {viewingProfile && (
-                <UserProfile
-                    user={user}
-                    userProfile={viewingProfile}
-                    currentUserProfile={userProfile}
-                    db={db}
-                    onClose={() => setViewingProfile(null)}
-                    habits={habits}
-                    isReadOnly={viewingProfile.uid !== user.uid}
-                    onInvitePartner={handleInvitePartner}
-                    onFollow={handleFollowUser}
-                    onUnfollow={handleUnfollowUser}
-                />
-            )}
-
             <SocialModal
                 isOpen={showSocialModal}
                 onClose={() => setShowSocialModal(false)}
@@ -388,6 +373,22 @@ export default function HabitManager({ db, user, userProfile, onLogout }) {
                 onViewProfile={handleViewProfile}
                 onUnfollow={handleUnfollowUser}
             />
+
+            {viewingProfile && (
+                <UserProfile
+                    user={user}
+                    userProfile={viewingProfile}
+                    currentUserProfile={userProfile}
+                    db={db}
+                    storage={storage}
+                    onClose={() => setViewingProfile(null)}
+                    habits={habits}
+                    isReadOnly={viewingProfile.uid !== user.uid}
+                    onInvitePartner={handleInvitePartner}
+                    onFollow={handleFollowUser}
+                    onUnfollow={handleUnfollowUser}
+                />
+            )}
 
             <CreateChallengeModal
                 isOpen={showCreateModal}
