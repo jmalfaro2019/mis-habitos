@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, setDoc, getDoc } from 'firebase/firestore';
 import { Trophy, Users, Plus, ArrowRight, Calendar, Hash } from 'lucide-react';
 import { Button } from './BaseUI';
 import CreateChallengeModal from './CreateChallengeModal';
 
 export default function ChallengeList({ db, user, onSelectChallenge }) {
   const [challenges, setChallenges] = useState([]);
+  const [creators, setCreators] = useState({}); // Map of uid -> userData
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
@@ -15,6 +16,37 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
     });
     return () => unsubscribe();
   }, [db]);
+
+  // Fetch creator profiles
+  useEffect(() => {
+    const fetchCreators = async () => {
+      const creatorIds = [...new Set(challenges.map(c => c.createdBy).filter(Boolean))];
+      const newCreators = { ...creators };
+      let hasChanges = false;
+
+      for (const uid of creatorIds) {
+        if (!newCreators[uid]) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', uid));
+            if (userDoc.exists()) {
+              newCreators[uid] = userDoc.data();
+              hasChanges = true;
+            }
+          } catch (error) {
+            console.error(`Error fetching creator ${uid}:`, error);
+          }
+        }
+      }
+
+      if (hasChanges) {
+        setCreators(newCreators);
+      }
+    };
+
+    if (challenges.length > 0) {
+      fetchCreators();
+    }
+  }, [challenges, db]);
 
   const handleJoin = async (challenge) => {
     if (!user) return;
@@ -41,7 +73,7 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
       };
 
       const periodKey = getPeriodKey(challenge.frequency?.type || 'WEEKLY');
-      
+
       await setDoc(doc(db, 'challenge_progress', `${challenge.id}_${user.uid}`), {
         challengeId: challenge.id,
         userId: user.uid,
@@ -50,7 +82,7 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
         },
         lastCheckIn: null
       });
-      
+
       // Navigate to detail
       onSelectChallenge(challenge.id);
     } catch (error) {
@@ -62,7 +94,7 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-slate-800">Retos Disponibles</h3>
-        <button 
+        <button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-2 rounded-lg transition-colors"
         >
@@ -83,7 +115,8 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
             const isParticipant = challenge.participants?.includes(user?.uid);
             const freqType = challenge.frequency?.type === 'DAILY' ? 'Diario' : challenge.frequency?.type === 'WEEKLY' ? 'Semanal' : 'Mensual';
             const freqTarget = challenge.frequency?.target || 1;
-            
+            const creator = creators[challenge.createdBy];
+
             return (
               <div key={challenge.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
                 <div className="flex justify-between items-start mb-3">
@@ -100,34 +133,41 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
                 </div>
 
                 <div className="flex items-center gap-4 mb-4 text-xs text-slate-500">
+                  <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md">
+                    <Calendar size={12} />
+                    {freqType}
+                  </div>
+                  {challenge.frequency?.type !== 'DAILY' && (
                     <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md">
-                        <Calendar size={12} />
-                        {freqType}
+                      <Hash size={12} />
+                      {freqTarget} veces
                     </div>
-                    {challenge.frequency?.type !== 'DAILY' && (
-                        <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md">
-                            <Hash size={12} />
-                            {freqTarget} veces
-                        </div>
-                    )}
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between mt-2">
-                  <div className="text-xs text-slate-400">
-                    Creado por <span className="font-medium text-slate-600">{challenge.creatorName}</span>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <div className="w-6 h-6 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center text-slate-400 font-bold">
+                      {creator?.photoURL ? (
+                        <img src={creator.photoURL} alt={challenge.creatorName} className="w-full h-full object-cover" />
+                      ) : (
+                        (challenge.creatorName || '?')[0].toUpperCase()
+                      )}
+                    </div>
+                    <span>Creado por <span className="font-medium text-slate-600">{challenge.creatorName}</span></span>
                   </div>
-                  
+
                   {isParticipant ? (
-                    <Button 
-                      variant="secondary" 
+                    <Button
+                      variant="secondary"
                       onClick={() => onSelectChallenge(challenge.id)}
                       className="py-2 px-4 text-xs h-auto"
                     >
                       Ver Ranking <ArrowRight size={14} className="ml-1" />
                     </Button>
                   ) : (
-                    <Button 
-                      variant="primary" 
+                    <Button
+                      variant="primary"
                       onClick={() => handleJoin(challenge)}
                       className="py-2 px-4 text-xs h-auto"
                     >
@@ -141,8 +181,8 @@ export default function ChallengeList({ db, user, onSelectChallenge }) {
         )}
       </div>
 
-      <CreateChallengeModal 
-        isOpen={showCreateModal} 
+      <CreateChallengeModal
+        isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         db={db}
         user={user}

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  updateDoc, 
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  updateDoc,
   doc,
   writeBatch,
   addDoc,
@@ -16,7 +16,7 @@ import {
 import { Bell, Heart, UserPlus } from 'lucide-react';
 import { Button } from './BaseUI';
 
-export default function NotificationsPanel({ db, user }) {
+export default function NotificationsPanel({ db, user, onViewProfile }) {
   const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -112,6 +112,19 @@ export default function NotificationsPanel({ db, user }) {
     return email?.split('@')[0] || 'Usuario';
   };
 
+  const NotificationUserLink = ({ uid, displayName, notifId, read }) => (
+    <span
+      className="font-semibold hover:underline cursor-pointer text-indigo-700"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onViewProfile) onViewProfile(uid);
+        if (!read) markAsRead(notifId);
+      }}
+    >
+      {displayName}
+    </span>
+  );
+
   const renderNotification = (notif) => {
     // Get display name from notification or fallback to email
     const displayName = notif.fromDisplayName || getDisplayName(notif.fromEmail);
@@ -123,7 +136,13 @@ export default function NotificationsPanel({ db, user }) {
             <UserPlus size={16} className="text-indigo-600 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm text-slate-700">
-                <span className="font-semibold">{displayName}</span> ha comenzado a seguirte.
+                <NotificationUserLink
+                  uid={notif.fromUid}
+                  displayName={displayName}
+                  notifId={notif.id}
+                  read={notif.read}
+                />{' '}
+                ha comenzado a seguirte.
               </p>
               <p className="text-xs text-slate-400 mt-1">
                 {notif.createdAt?.toDate?.()?.toLocaleDateString() || 'Reciente'}
@@ -131,14 +150,20 @@ export default function NotificationsPanel({ db, user }) {
             </div>
           </>
         );
-      
+
       case 'couple_invite':
         return (
           <>
             <Heart size={16} className="text-pink-600 mt-0.5 flex-shrink-0" fill="currentColor" />
             <div className="flex-1">
               <p className="text-sm text-slate-700">
-                <span className="font-semibold">{displayName}</span> quiere ser tu pareja 💕
+                <NotificationUserLink
+                  uid={notif.fromUid}
+                  displayName={displayName}
+                  notifId={notif.id}
+                  read={notif.read}
+                />{' '}
+                quiere ser tu pareja 💕
               </p>
               <div className="flex gap-2 mt-2">
                 <button
@@ -164,7 +189,13 @@ export default function NotificationsPanel({ db, user }) {
             <Heart size={16} className="text-pink-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm text-slate-700">
-                <span className="font-semibold">{displayName}</span> te envió un beso de ánimo 💋
+                <NotificationUserLink
+                  uid={notif.fromUid}
+                  displayName={displayName}
+                  notifId={notif.id}
+                  read={notif.read}
+                />{' '}
+                te envió un beso de ánimo 💋
               </p>
               {notif.message && (
                 <p className="text-xs text-slate-500 mt-1 italic">"{notif.message}"</p>
@@ -183,8 +214,8 @@ export default function NotificationsPanel({ db, user }) {
 
   return (
     <div className="relative">
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
+      <button
+        onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
       >
         <Bell size={20} />
@@ -205,14 +236,14 @@ export default function NotificationsPanel({ db, user }) {
                 </button>
               )}
             </div>
-            
+
             <div className="max-h-96 overflow-y-auto">
               {notifications.length === 0 ? (
                 <p className="p-4 text-center text-slate-400 text-sm">No tienes notificaciones.</p>
               ) : (
                 notifications.map(notif => (
-                  <div 
-                    key={notif.id} 
+                  <div
+                    key={notif.id}
                     onClick={() => !notif.read && notif.type !== 'couple_invite' && markAsRead(notif.id)}
                     className={`p-3 border-b border-slate-50 hover:bg-slate-50 transition-colors ${notif.type !== 'couple_invite' ? 'cursor-pointer' : ''} ${!notif.read ? 'bg-indigo-50/50' : ''}`}
                   >
